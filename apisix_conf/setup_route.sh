@@ -92,15 +92,87 @@ echo "APISIX 路由配置完成!"
 echo ""
 echo "测试命令:"
 echo "  # 获取 access token"
-echo "  TOKEN=\$(curl -sk -X POST \\"
-echo "    'https://keycloak.example.com/realms/apisix_test_realm/protocol/openid-connect/token' \\"
-echo "    -H 'Content-Type: application/x-www-form-urlencoded' \\"
-echo "    -d 'grant_type=password' \\"
-echo "    -d 'client_id=apisix' \\"
-echo "    -d 'username=testuser' \\"
+echo "  TOKEN=\$(curl -sk -X POST \"
+echo "    'https://keycloak.example.com/realms/apisix_test_realm/protocol/openid-connect/token' \"
+echo "    -H 'Content-Type: application/x-www-form-urlencoded' \"
+echo "    -d 'grant_type=password' \"
+echo "    -d 'client_id=apisix' \"
+echo "    -d 'username=testuser' \"
 echo "    -d 'password=testpass' | python3 -c \"import sys,json; print(json.load(sys.stdin)['access_token'])\")"
 echo ""
 echo "  # 调用需要认证的 API"
-echo "  curl -sk -H \"Authorization: Bearer \${TOKEN}\" \\"
+echo "  curl -sk -H \"Authorization: Bearer \${TOKEN}\" \"
 echo "    'https://localhost/api/v1/echo?msg=hello'"
+echo "=========================================="
+
+# ============================================================
+# Nacos Service Routes - appended
+# ============================================================
+
+# Wait for Nacos to be ready
+echo ""
+echo "=========================================="
+echo "APISIX Nacos 服务发现路由配置"
+echo "=========================================="
+
+echo "Waiting for Nacos..."
+for i in {1..30}; do
+    if curl -sf "http://nacos:8848/nacos/v1/ns/instance/list?serviceName=demo-service" > /dev/null 2>&1; then
+        echo "Nacos is ready"
+        break
+    fi
+    echo "Waiting... ($i/30)"
+    sleep 2
+done
+
+# Route: /demo/* → nacos service: demo-service
+echo "Creating /demo/* route to demo-service via Nacos..."
+curl -s -X PUT "${ADMIN_URL}/routes/20" \
+  -H "X-API-KEY: ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "demo-nacos-route",
+    "uri": "/demo/*",
+    "description": "Route to demo-service via Nacos discovery",
+    "upstream": {
+      "service_name": "demo-service",
+      "type": "roundrobin",
+      "discovery_type": "nacos",
+      "discovery_args": {
+        "group_name": "DEFAULT_GROUP"
+      }
+    }
+  }'
+echo ""
+
+# Route: /nacos/ui/* → Nacos Console
+echo "Creating /nacos/ui/* route to Nacos Console..."
+curl -s -X PUT "${ADMIN_URL}/routes/21" \
+  -H "X-API-KEY: ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "nacos-console-route",
+    "uri": "/nacos/ui/*",
+    "description": "Route to Nacos Console",
+    "upstream": {
+      "type": "roundrobin",
+      "nodes": [
+        {"host": "nacos", "port": 8080, "weight": 100}
+      ]
+    }
+  }'
+echo ""
+
+# Verify
+echo "Verifying routes..."
+sleep 2
+echo -n "/demo/* → demo-service: "
+curl -s "${ADMIN_URL}/routes/20" -H "X-API-KEY: ${API_KEY}" | python3 -c "import sys,json; d=json.load(sys.stdin); v=d.get('node',{}).get('value',{}); print('OK - ' + v.get('upstream',{}).get('service_name','') if v.get('upstream',{}).get('service_name')=='demo-service' else 'FAIL')"
+
+echo -n "/nacos/ui/* → nacos:8080: "
+curl -s "${ADMIN_URL}/routes/21" -H "X-API-KEY: ${API_KEY}" | python3 -c "import sys,json; d=json.load(sys.stdin); v=d.get('node',{}).get('value',{}); print('OK' if v.get('upstream',{}).get('nodes') else 'FAIL')"
+
+echo ""
+echo "=========================================="
+echo "Nacos 路由配置完成!"
 echo "=========================================="

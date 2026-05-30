@@ -143,6 +143,7 @@ services:
 
   # setup:
   #   image: curlimages/curl:latest
+  #   container_name: setup
   #   volumes:
   #     - ./apisix_conf/setup_route.sh:/setup.sh:ro
   #   networks:

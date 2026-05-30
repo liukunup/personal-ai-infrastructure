@@ -14,6 +14,18 @@ apisix:
     - 127.0.0.11
     - 8.8.8.8
 
+discovery:
+  nacos:
+    host:
+      - "http://nacos:8848"
+    prefix: "/nacos/v1/"
+    fetch_interval: 30    # default 30 sec
+    weight: 100           # default 100
+    timeout:
+      connect: 2000       # default 2000 ms
+      send: 2000          # default 2000 ms
+      read: 5000          # default 5000 ms
+
 deployment:
 
   admin:
@@ -37,18 +49,6 @@ deployment:
     prefix: "/apisix"       # apisix configurations prefix
     timeout: 30             # 30 seconds
 
-  services:
-    - name: fastapi-backend
-      upstream:
-        service_name: fastapi-service
-        discovery_type: nacos
-        discovery_args:
-          nacos_args:
-            env_id: ""
-            group_name: DEFAULT
-            username: nacos
-            password: nacos
-
 plugins:
   # - http-logger
   - limit-req
@@ -61,7 +61,6 @@ plugins:
   - proxy-rewrite
   # - redirect
   # - real-ip
-  - nacos-service-discovery
 
 plugin_attr:
   prometheus:

@@ -76,7 +76,28 @@ plugins:
     rejected_code: 429
   
   proxy-rewrite:
-    uri: "/v1$uri"  # 重写到后端服务
+    uri: "/v1$uri"
+
+- id: demo-nacos-route
+  uri: /demo/*
+  name: demo-service-route
+  upstream:
+    type: roundrobin
+    pass_host: pass
+    scheme: http
+    nodes:
+      "demo:8000": 100
+    discovery_type: nacos
+    service_name: demo-service
+    discovery_args:
+      group_name: DEFAULT_GROUP
+    timeout:
+      connect: 6
+      send: 6
+      read: 6
+    retries: 3
+  proxy-rewrite:
+    uri: "/api/v1/echo"  # 重写到后端服务
 
 upstream:
   type: roundrobin
