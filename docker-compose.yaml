@@ -1,0 +1,223 @@
+name: pai
+
+networks:
+  pai:
+    driver: bridge
+
+volumes:
+  postgres:
+  etcd:
+
+services:
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    restart: always
+    volumes:
+      # Nginx 配置文件
+      - ./nginx_conf/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx_conf/nginxconfig.io:/etc/nginx/nginxconfig.io:ro
+      - ./nginx_conf/sites-available:/etc/nginx/sites-available:ro
+      - ./nginx_conf/sites-enabled:/etc/nginx/conf.d:ro
+      # DH 参数文件
+      - ./nginx_conf/ssl/dhparam.pem:/etc/nginx/dhparam.pem:ro
+      # CA 证书
+      - ./nginx_conf/ssl/ca.crt:/etc/nginx/ssl/ca.crt:ro
+      # APISIX SSL 证书
+      - ./nginx_conf/ssl/api.example.com/api.crt:/etc/nginx/ssl/api.example.com.crt:ro
+      - ./nginx_conf/ssl/api.example.com/api.key:/etc/nginx/ssl/api.example.com.key:ro
+      # Keycloak SSL 证书
+      - ./nginx_conf/ssl/keycloak.example.com/keycloak.crt:/etc/nginx/ssl/keycloak.example.com.crt:ro
+      - ./nginx_conf/ssl/keycloak.example.com/keycloak.key:/etc/nginx/ssl/keycloak.example.com.key:ro
+    ports:
+      - 80:80   # HTTP
+      - 443:443 # HTTPS
+    networks:
+      pai:
+
+  keycloak:
+    image: keycloak/keycloak:26.6.2
+    container_name: keycloak
+    restart: unless-stopped
+    command:
+      - start
+      - --http-enabled=true                 # 启用 HTTP
+      - --proxy-headers=xforwarded          # 解析 X-Forwarded-* 头
+      - --hostname=${KC_HOSTNAME}           # 设置公共域名
+      - --hostname-backchannel-dynamic=true # 启用动态后端主机名解析
+      - --hostname-strict=false             # 允许不匹配主机名的请求
+    environment:
+      # 管理员配置
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}
+      # 数据库配置
+      KC_DB: postgres
+      KC_DB_USERNAME: ${PG_USERNAME:-keycloak}
+      KC_DB_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD is not set}
+      KC_DB_URL_HOST: ${PG_HOST:-postgres}
+      KC_DB_URL_PORT: ${PG_PORT:-5432}
+      KC_DB_URL_DATABASE: keycloak
+    # ports:
+    #   - 8080:8080 # HTTP
+    #   - 8443:8443 # HTTPS
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      pai:
+    healthcheck:
+      test: |
+        CMD-SHELL
+        curl -f http://localhost:8080/health/ready
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  postgres:
+    image: postgres
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: ${PG_USERNAME:-keycloak}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD is not set}
+    volumes:
+      - postgres:/var/lib/postgresql
+    # ports:
+    #   - 5432:5432
+    networks:
+      pai:
+    healthcheck:
+      test: |
+        CMD-SHELL
+        pg_isready -h 127.0.0.1 -p 5432 -d keycloak -q -U ${PG_USERNAME:-keycloak}
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  apisix:
+    image: apache/apisix:3.14.1-debian
+    container_name: apisix
+    restart: always
+    volumes:
+      - ./apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./apisix_conf/rbac/model.conf:/usr/local/apisix/conf/rbac_model.conf:ro
+      - ./apisix_conf/rbac/policy.csv:/usr/local/apisix/conf/rbac_policy.csv:ro
+      - ./apisix_conf/oidc/config.json:/usr/local/apisix/conf/oidc_config.json:ro
+    ports:
+      - 9180:9180/tcp # Admin API
+      # - 9091:9091/tcp # Prometheus Metrics
+      # - 9080:9080/tcp # HTTP Proxy
+      # - 9443:9443/tcp # HTTPS Proxy
+      # - 9092:9092/tcp # gRPC Proxy
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      pai:
+
+  etcd:
+    image: bitnamilegacy/etcd:3.5.11
+    container_name: etcd
+    restart: always
+    volumes:
+      - etcd:/bitnami/etcd
+    environment:
+      ETCD_ENABLE_V2: true
+      ALLOW_NONE_AUTHENTICATION: yes
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+    networks:
+      pai:
+    healthcheck:
+      test: |
+        CMD-SHELL
+        etcdctl endpoint health
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # setup:
+  #   image: curlimages/curl:latest
+  #   volumes:
+  #     - ./apisix_conf/setup_route.sh:/setup.sh:ro
+  #   networks:
+  #     pai:
+  #   depends_on:
+  #     apisix:
+  #       condition: service_started
+  #     keycloak:
+  #       condition: service_healthy
+  #     nacos:
+  #       condition: service_started
+  #   entrypoint: ["/bin/sh", "/setup.sh"]
+  #   restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v3.9.1
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus_conf/prometheus.yml:/etc/prometheus/prometheus.yml
+    # ports:
+    #   - 9090:9090
+    networks:
+      pai:
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    restart: unless-stopped
+    volumes:
+      - ./grafana_conf/provisioning:/etc/grafana/provisioning
+      - ./grafana_conf/dashboards:/var/lib/grafana/dashboards
+      - ./grafana_conf/config/grafana.ini:/etc/grafana/grafana.ini
+    ports:
+      - 3000:3000
+    networks:
+      pai:
+
+  nacos:
+    image: nacos/nacos-server
+    container_name: nacos
+    restart: unless-stopped
+    environment:
+      - PREFER_HOST_MODE=hostname
+      - MODE=standalone
+      - NACOS_AUTH_IDENTITY_KEY=serverIdentity
+      - NACOS_AUTH_IDENTITY_VALUE=security
+      - NACOS_AUTH_TOKEN=VGhpc0lzTXlDdXN0b21TZWNyZXRLZXkwMTIzNDU2Nzg=
+      # - NACOS_AUTH_ENABLE=false
+      # - NACOS_AUTH_CACHE_ENABLE=false
+    ports:
+      - 8789:8080 # HTTP API
+      # - 8848:8848 # gRPC
+      # - 9848:9848 # gRPC v2
+    networks:
+      pai:
+
+  # fastapi-service:
+  #   build:
+  #     context: ./fastapi_service
+  #     dockerfile: Dockerfile
+  #   container_name: fastapi-service
+  #   restart: unless-stopped
+  #   environment:
+  #     - NACOS_HOST=nacos
+  #     - NACOS_PORT=8848
+  #     - NACOS_NAMESPACE=
+  #     - NACOS_USERNAME=nacos
+  #     - NACOS_PASSWORD=nacos
+  #     - SERVICE_HOST=fastapi-service
+  #     - SERVICE_PORT=8000
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     nacos:
+  #       condition: service_started
+  #   networks:
+  #     pai:

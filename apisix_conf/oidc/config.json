@@ -1,0 +1,12 @@
+{
+  "client_id": "apisix",
+  "client_secret": "vARhVsot5zbV5xR6lOVCj7tItQPSjkL8",
+  "discovery": "https://keycloak.example.com/realms/apisix_test_realm/.well-known/openid-configuration",
+  "scope": "openid",
+  "bearer_only": false,
+  "ssl_verify": false,
+  "redirect_uri": "https://api.example.com/callback",
+  "session": {
+    "secret": "kRYs2T5Mry8FcUO7vNIksPMuJXT129F2"
+  }
+}
