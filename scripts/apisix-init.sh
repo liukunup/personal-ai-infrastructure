@@ -24,6 +24,14 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # ============================================
+# Helper: 获取 Keycloak OIDC Discovery URL
+# ============================================
+get_keycloak_discovery() {
+    local keycloak_ip=$(getent hosts keycloak | awk '{print $1}')
+    echo "http://${keycloak_ip}:8080/realms/${KC_REALM}/.well-known/openid-configuration"
+}
+
+# ============================================
 # 1. 等待 APISIX 就绪
 # ============================================
 wait_for_apisix() {
@@ -180,7 +188,121 @@ create_api_route() {
 }
 
 # ============================================
-# 5. 打印摘要
+# 6. 创建 Route: /api/v1/users/* (openid-connect + authz-casbin)
+# ============================================
+create_users_route() {
+    log_info "Creating Route: users-route (openid-connect + authz-casbin)"
+
+    local discovery=$(get_keycloak_discovery)
+    local route_json='{
+        "id": "users-route",
+        "uri": "/api/v1/users/*",
+        "plugins": {
+            "openid-connect": {
+                "client_id": "apisix",
+                "client_secret": "'"${APISIX_CLIENT_SECRET}"'",
+                "discovery": "'"${discovery}"'",
+                "scope": "openid profile email groups",
+                "required_scopes": ["groups"],
+                "bearer_only": true,
+                "ssl_verify": false,
+                "set_userinfo_header": true,
+                "access_token_in_authorization_header": false,
+                "token_endpoint_auth_method": "client_secret_post"
+            },
+            "authz-casbin": {
+                "model": "[request_definition]\nr = sub, obj, act\n[policy_definition]\np = sub, obj, act\n[role_definition]\ng = _, _\n[policy_effect]\ne = some(where (p.eft == allow))\n[matchers]\nm = (g(r.sub, p.sub) || keyMatch(r.sub, p.sub)) && keyMatch(r.obj, p.obj) && keyMatch(r.act, p.act)",
+                "policy": "p, admin, /api/v1/users, GET\np, admin, /api/v1/users, POST\np, admin, /api/v1/users, PUT\np, admin, /api/v1/users, DELETE\np, user, /api/v1/users, GET\np, user, /api/v1/users, POST\ng, /admin-group, admin\ng, /user-group, user",
+                "username": "preferred_username"
+            },
+            "proxy-rewrite": {
+                "uri": "/v1$uri"
+            },
+            "cors": {
+                "allow_origins": "*",
+                "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+                "allow_headers": "Authorization,Content-Type",
+                "max_age": 3600
+            }
+        },
+        "upstream": {
+            "type": "roundrobin",
+            "nodes": [{"host": "fastapi-service", "port": 8000, "weight": 1}]
+        }
+    }'
+
+    local response
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/users-route" \
+        -H "X-API-KEY: ${ADMIN_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${route_json}")
+
+    if echo "${response}" | grep -q '"code":0\|"id":"users-route"'; then
+        log_info "Route 'users-route' 创建成功"
+    else
+        log_warn "Route 响应: ${response}"
+    fi
+}
+
+# ============================================
+# 7. 创建 Route: /api/v1/users/admin/* (openid-connect + authz-casbin admin-only)
+# ============================================
+create_admin_route() {
+    log_info "Creating Route: admin-route (openid-connect + authz-casbin admin-only)"
+
+    local discovery=$(get_keycloak_discovery)
+    local route_json='{
+        "id": "admin-route",
+        "uri": "/api/v1/users/admin/*",
+        "plugins": {
+            "openid-connect": {
+                "client_id": "apisix",
+                "client_secret": "'"${APISIX_CLIENT_SECRET}"'",
+                "discovery": "'"${discovery}"'",
+                "scope": "openid profile email groups",
+                "required_scopes": ["groups"],
+                "bearer_only": true,
+                "ssl_verify": false,
+                "set_userinfo_header": true,
+                "access_token_in_authorization_header": false,
+                "token_endpoint_auth_method": "client_secret_post"
+            },
+            "authz-casbin": {
+                "model": "[request_definition]\nr = sub, obj, act\n[policy_definition]\np = sub, obj, act\n[role_definition]\ng = _, _\n[policy_effect]\ne = some(where (p.eft == allow))\n[matchers]\nm = (g(r.sub, p.sub) || keyMatch(r.sub, p.sub)) && keyMatch(r.obj, p.obj) && keyMatch(r.act, p.act)",
+                "policy": "p, admin, /api/v1/users/admin, GET\np, admin, /api/v1/users/admin, POST\np, admin, /api/v1/users/admin, PUT\np, admin, /api/v1/users/admin, DELETE\ng, /admin-group, admin",
+                "username": "preferred_username"
+            },
+            "proxy-rewrite": {
+                "uri": "/v1$uri"
+            },
+            "cors": {
+                "allow_origins": "*",
+                "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+                "allow_headers": "Authorization,Content-Type",
+                "max_age": 3600
+            }
+        },
+        "upstream": {
+            "type": "roundrobin",
+            "nodes": [{"host": "fastapi-service", "port": 8000, "weight": 1}]
+        }
+    }'
+
+    local response
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/admin-route" \
+        -H "X-API-KEY: ${ADMIN_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${route_json}")
+
+    if echo "${response}" | grep -q '"code":0\|"id":"admin-route"'; then
+        log_info "Route 'admin-route' 创建成功"
+    else
+        log_warn "Route 响应: ${response}"
+    fi
+}
+
+# ============================================
+# 8. 打印摘要
 # ============================================
 print_summary() {
     log_info "=========================================="
@@ -190,6 +312,8 @@ print_summary() {
     log_info "Routes:"
     log_info "  - demo-page-route (authz-keycloak + authz-casbin)"
     log_info "  - demo-api-route (hmac-auth)"
+    log_info "  - users-route (openid-connect + authz-casbin)"
+    log_info "  - admin-route (openid-connect + authz-casbin admin-only)"
     log_info ""
     log_info "Keycloak 认证端点: http://keycloak:8080/realms/${KC_REALM}"
     log_info "=========================================="
@@ -206,6 +330,8 @@ main() {
     create_consumer
     create_page_route
     create_api_route
+    create_users_route
+    create_admin_route
     print_summary
 
     log_info "APISIX 初始化完成!"
