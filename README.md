@@ -27,8 +27,9 @@ docker compose up -d
 
 | Route | Auth | Upstream |
 |-------|------|----------|
-| `/demo/page/*` | authz-keycloak + authz-casbin | `/api/v1/*` |
-| `/demo/api/*` | hmac-auth | `/api/v1/*` |
+| `/api/v1/users` | openid-connect + authz-casbin | `/v1/users` |
+| `/api/v1/users/admin/*` | openid-connect + authz-casbin (admin only) | `/v1/users/admin` |
+| `/api/v1/echo` | hmac-auth | `/v1/echo` |
 
 ## Demo Service Endpoints
 
@@ -104,6 +105,61 @@ Then call the API:
 curl http://127.0.0.1:9080/demo/api/api/v1/echo?msg=hello \
   -H "Date: <GMT_TIME>" \
   -H "Authorization: <SIGNATURE>"
+```
+
+### Testing New Routes
+
+#### OIDC Authentication (alice - admin, bob - user)
+
+```bash
+# Get alice's token (admin)
+ALICE_TOKEN=$(curl -s -X POST "http://keycloak:8080/realms/apisix_test_realm/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=apisix" \
+  -d "client_secret=${APISIX_CLIENT_SECRET:-vARhVsot5zbV5xR6lOVCj7tItQPSjkL8}" \
+  -d "grant_type=password" \
+  -d "username=alice" \
+  -d "password=password123" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Get bob's token (user)
+BOB_TOKEN=$(curl -s -X POST "http://keycloak:8080/realms/apisix_test_realm/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=apisix" \
+  -d "client_secret=${APISIX_CLIENT_SECRET:-vARhVsot5zbV5xR6lOVCj7tItQPSjkL8}" \
+  -d "grant_type=password" \
+  -d "username=bob" \
+  -d "password=password123" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Test alice access to users (admin - succeeds)
+curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" http://localhost:9080/api/v1/users
+
+# Test alice access to admin (admin - succeeds)
+curl -s -H "Authorization: Bearer ${ALICE_TOKEN}" http://localhost:9080/api/v1/users/admin
+
+# Test bob access to users (user - succeeds for GET/POST)
+curl -s -H "Authorization: Bearer ${BOB_TOKEN}" http://localhost:9080/api/v1/users
+
+# Test bob access to admin (user - fails, 403)
+curl -s -H "Authorization: Bearer ${BOB_TOKEN}" http://localhost:9080/api/v1/users/admin
+```
+
+#### HMAC Authentication for /api/v1/echo
+
+```bash
+# Generate HMAC signature with Python
+python3 << 'EOF'
+import hmac, hashlib, base64
+from datetime import datetime, timezone
+
+key_id, secret_key = "echo-key", b"echo-secret-key"
+method, path = "GET", "/api/v1/echo"
+gmt = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+string = f"{key_id}\n{method} {path}\ndate: {gmt}\n"
+sig = base64.b64encode(hmac.new(secret_key, string.encode(), hashlib.sha256).digest()).decode()
+auth = f'Signature keyId="{key_id}",algorithm="hmac-sha256",headers="@request-target date",signature="{sig}"'
+print(f"Date: {gmt}")
+print(f"Authorization: {auth}")
+EOF
 ```
 
 ## Plugins Reference
