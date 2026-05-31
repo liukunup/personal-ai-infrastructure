@@ -17,8 +17,8 @@ apisix:
 discovery:
   nacos:
     host:
-      - "http://nacos:8848"
-    prefix: "/nacos/v1/"
+      - http://nacos:8848
+    prefix: /nacos/v1/
     fetch_interval: 30    # default 30 sec
     weight: 100           # default 100
     timeout:
@@ -50,20 +50,15 @@ deployment:
     timeout: 30             # 30 seconds
 
 plugins:
-  # - http-logger
   - limit-req
   - prometheus
-  # - key-auth
-  # - jwt-auth
+  - request-id
+  - proxy-rewrite
   - openid-connect
   - authz-casbin
-  - cors
-  - proxy-rewrite
-  # - redirect
-  # - real-ip
 
 plugin_attr:
   prometheus:
     export_addr:
-      ip: "0.0.0.0"
+      ip: 0.0.0.0
       port: 9091

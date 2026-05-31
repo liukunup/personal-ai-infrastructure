@@ -47,6 +47,8 @@ services:
       - --hostname=${KC_HOSTNAME}           # 设置公共域名
       - --hostname-backchannel-dynamic=true # 启用动态后端主机名解析
       - --hostname-strict=false             # 允许不匹配主机名的请求
+      - --health-enabled=true               # 启用健康检查端点
+      - --metrics-enabled=true              # 启用服务指标端点
     environment:
       # 管理员配置
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
@@ -61,6 +63,7 @@ services:
     # ports:
     #   - 8080:8080 # HTTP
     #   - 8443:8443 # HTTPS
+    #   - 9000:9000 # Health Check and Metrics
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,11 +72,11 @@ services:
     healthcheck:
       test: |
         CMD-SHELL
-        curl -f http://localhost:8080/health/ready
+        { printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000
       interval: 60s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   postgres:
     image: postgres
@@ -97,6 +100,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  keycloak-init:
+    image: keycloak/keycloak:26.6.2
+    container_name: keycloak-init
+    restart: "no"
+    entrypoint: ["/bin/bash", "/scripts/keycloak-init.sh"]
+    volumes:
+      - ./scripts/keycloak-init.sh:/scripts/keycloak-init.sh:ro
+    environment:
+      KC_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
+      KC_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}
+      KC_REALM: ${KC_REALM:?KC_REALM is not set}
+      KC_CLIENT_ID: ${KC_CLIENT_ID:-pai-client}
+      KC_CLIENT_NAME: ${KC_CLIENT_NAME:-PAI Client}
+      KC_TEST_USERNAME: ${KC_TEST_USERNAME:-testuser}
+      KC_TEST_PASSWORD: ${KC_TEST_PASSWORD:?KC_TEST_PASSWORD is not set}
+      KC_TEST_FIRSTNAME: ${KC_TEST_FIRSTNAME:-Test}
+      KC_TEST_LASTNAME: ${KC_TEST_LASTNAME:-User}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      pai:
 
   apisix:
     image: apache/apisix:3.14.1-debian

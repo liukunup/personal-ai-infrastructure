@@ -1,0 +1,29 @@
+routes:
+  - id: 1
+    name: demo
+    desc: The demo route for testing
+    uri: /demo/*
+    plugins:
+      limit-req:
+        rate: 100
+        burst: 20
+        key: remote_addr
+        key_type: var
+        rejected_code: 429
+        nodelay: true
+      request-id:
+        algorithm: uuid
+        header_name: X-Request-Id
+        include_in_response: true
+      proxy-rewrite:
+        regex_uri:
+          - "^/demo/(.*)"
+          - "/$1"
+    upstream:
+      service_name: demo-service
+      type: roundrobin
+      discovery_type: nacos
+      discovery_args:
+        namespace_id: public
+        group_name: DEFAULT_GROUP
+#END

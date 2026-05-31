@@ -62,6 +62,30 @@ async def echo(msg: str = "default"):
     return {"echo": msg, "service": SERVICE_NAME}
 
 
+@app.get("/api/v1/users")
+async def list_users():
+    return {
+        "users": [
+            {"id": 1, "name": "Alice", "role": "admin"},
+            {"id": 2, "name": "Bob", "role": "user"},
+            {"id": 3, "name": "Charlie", "role": "user"},
+        ],
+        "service": SERVICE_NAME,
+    }
+
+
+@app.get("/api/v1/users/{user_id}")
+async def get_user(user_id: int):
+    users = {
+        1: {"id": 1, "name": "Alice", "role": "admin"},
+        2: {"id": 2, "name": "Bob", "role": "user"},
+        3: {"id": 3, "name": "Charlie", "role": "user"},
+    }
+    if user_id not in users:
+        return {"error": "User not found"}, 404
+    return {**users[user_id], "service": SERVICE_NAME}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=SERVICE_PORT)
