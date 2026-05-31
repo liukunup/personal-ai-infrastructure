@@ -167,22 +167,30 @@ services:
       retries: 3
       start_period: 30s
 
-  # setup:
-  #   image: curlimages/curl:latest
-  #   container_name: setup
-  #   volumes:
-  #     - ./apisix_conf/setup_route.sh:/setup.sh:ro
-  #   networks:
-  #     pai:
-  #   depends_on:
-  #     apisix:
-  #       condition: service_started
-  #     keycloak:
-  #       condition: service_healthy
-  #     nacos:
-  #       condition: service_started
-  #   entrypoint: ["/bin/sh", "/setup.sh"]
-  #   restart: "no"
+  apisix-init:
+    image: curlimages/curl:latest
+    container_name: apisix-init
+    restart: "no"
+    entrypoint: ["/bin/sh", "/scripts/apisix-init.sh"]
+    volumes:
+      - ./scripts/apisix-init.sh:/scripts/apisix-init.sh:ro
+      - ./apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    environment:
+      APISIX_URL: ${APISIX_URL:-http://apisix:9180}
+      APISIX_CONF: /usr/local/apisix/conf/config.yaml
+      KC_REALM: ${KC_REALM:-pai_realm}
+      KC_CLIENT_ID: ${KC_CLIENT_ID:-apisix}
+      KC_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
+      KC_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}
+      HMAC_KEY_ID: ${HMAC_KEY_ID:-}
+      HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-}
+    depends_on:
+      apisix:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
+    networks:
+      pai:
 
   prometheus:
     image: prom/prometheus:v3.9.1

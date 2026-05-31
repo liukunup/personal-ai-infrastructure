@@ -86,6 +86,17 @@ async def get_user(user_id: int):
     return {**users[user_id], "service": SERVICE_NAME}
 
 
+@app.get("/api/v1/admin")
+async def admin():
+    return {"message": "Hello, Admin!"}
+
+
+@app.get("/api/v1/datetime")
+async def current_datetime():
+    from datetime import datetime
+    return {"datetime": datetime.utcnow().isoformat() + "Z", "service": SERVICE_NAME}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=SERVICE_PORT)
