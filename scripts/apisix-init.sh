@@ -227,7 +227,7 @@ create_users_route() {
         },
         "upstream": {
             "type": "roundrobin",
-            "nodes": [{"host": "fastapi-service", "port": 8000, "weight": 1}]
+            "nodes": [{"host": "demo", "port": 8000, "weight": 1}]
         }
     }'
 
@@ -284,7 +284,7 @@ create_admin_route() {
         },
         "upstream": {
             "type": "roundrobin",
-            "nodes": [{"host": "fastapi-service", "port": 8000, "weight": 1}]
+            "nodes": [{"host": "demo", "port": 8000, "weight": 1}]
         }
     }'
 
@@ -330,7 +330,7 @@ create_echo_route() {
         },
         "upstream": {
             "type": "roundrobin",
-            "nodes": [{"host": "fastapi-service", "port": 8000, "weight": 1}]
+            "nodes": [{"host": "demo", "port": 8000, "weight": 1}]
         }
     }'
 
