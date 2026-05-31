@@ -169,7 +169,44 @@ assign_user_to_group() {
 }
 
 # ============================================
-# 8. 打印配置摘要
+# 9. 创建自定义组 (/admin-group, /user-group)
+# ============================================
+create_custom_groups() {
+    log_info "创建自定义组: /admin-group, /user-group"
+
+    ${KCADM} create groups -r ${KC_REALM} -s name=/admin-group 2>/dev/null || true
+    ${KCADM} create groups -r ${KC_REALM} -s name=/user-group 2>/dev/null || true
+
+    log_info "自定义组创建成功"
+}
+
+# ============================================
+# 10. 将 alice/bob 赋予自定义组
+# ============================================
+assign_custom_users_to_groups() {
+    log_info "将用户 alice 赋予 /admin-group, bob 赋予 /user-group"
+
+    local alice_id admin_group_id bob_id user_group_id
+
+    alice_id=$(${KCADM} get users -r ${KC_REALM} -q username=alice --format csv 2>/dev/null | head -1 | cut -d',' -f1)
+    admin_group_id=$(${KCADM} get groups -r ${KC_REALM} -q name=/admin-group --format csv 2>/dev/null | head -1 | cut -d',' -f1)
+    if [ -n "$alice_id" ] && [ -n "$admin_group_id" ]; then
+        ${KCADM} create users/${alice_id}/groups/${admin_group_id} -r ${KC_REALM} 2>/dev/null || true
+        log_info "alice 已赋予 /admin-group"
+    fi
+
+    bob_id=$(${KCADM} get users -r ${KC_REALM} -q username=bob --format csv 2>/dev/null | head -1 | cut -d',' -f1)
+    user_group_id=$(${KCADM} get groups -r ${KC_REALM} -q name=/user-group --format csv 2>/dev/null | head -1 | cut -d',' -f1)
+    if [ -n "$bob_id" ] && [ -n "$user_group_id" ]; then
+        ${KCADM} create users/${bob_id}/groups/${user_group_id} -r ${KC_REALM} 2>/dev/null || true
+        log_info "bob 已赋予 /user-group"
+    fi
+
+    log_info "自定义组赋予完成"
+}
+
+# ============================================
+# 11. 打印配置摘要
 # ============================================
 print_summary() {
     log_info "=========================================="
@@ -183,6 +220,10 @@ print_summary() {
     log_info "  ${TEST_USERNAME} (密码: ${TEST_PASSWORD})"
     log_info "  First Name: ${TEST_FIRSTNAME}, Last Name: ${TEST_LASTNAME}"
     log_info "  所属组: user"
+    log_info ""
+    log_info "自定义用户:"
+    log_info "  alice (密码: password123) -> /admin-group"
+    log_info "  bob (密码: password123) -> /user-group"
     log_info ""
     log_info "Keycloak 管理控制台: https://keycloak.example.com/admin/"
     log_info "=========================================="
@@ -199,6 +240,8 @@ main() {
     get_client_secret
     create_user
     assign_user_to_group
+    create_custom_groups
+    assign_custom_users_to_groups
     print_summary
 }
 
