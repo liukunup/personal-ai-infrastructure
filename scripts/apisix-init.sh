@@ -302,6 +302,52 @@ create_admin_route() {
 }
 
 # ============================================
+# 5. 创建 Route: /api/v1/echo (hmac-auth)
+# ============================================
+create_echo_route() {
+    log_info "Creating Route: echo-route (hmac-auth)"
+
+    local route_json='{
+        "id": "echo-route",
+        "uri": "/api/v1/echo",
+        "plugins": {
+            "hmac-auth": {
+                "key_id": "echo-key",
+                "secret_key": "echo-secret-key",
+                "allowed_algorithms": ["hmac-sha256"],
+                "clock_skew": 30,
+                "hide_credentials": false
+            },
+            "proxy-rewrite": {
+                "uri": "/v1/echo"
+            },
+            "cors": {
+                "allow_origins": "*",
+                "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+                "allow_headers": "Authorization,Content-Type,Date",
+                "max_age": 3600
+            }
+        },
+        "upstream": {
+            "type": "roundrobin",
+            "nodes": [{"host": "fastapi-service", "port": 8000, "weight": 1}]
+        }
+    }'
+
+    local response
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/echo-route" \
+        -H "X-API-KEY: ${ADMIN_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${route_json}")
+
+    if echo "${response}" | grep -q '"code":0\|"id":"echo-route"'; then
+        log_info "Route 'echo-route' 创建成功"
+    else
+        log_warn "Route 响应: ${response}"
+    fi
+}
+
+# ============================================
 # 8. 打印摘要
 # ============================================
 print_summary() {
@@ -314,6 +360,7 @@ print_summary() {
     log_info "  - demo-api-route (hmac-auth)"
     log_info "  - users-route (openid-connect + authz-casbin)"
     log_info "  - admin-route (openid-connect + authz-casbin admin-only)"
+    log_info "  - echo-route (hmac-auth)"
     log_info ""
     log_info "Keycloak 认证端点: http://keycloak:8080/realms/${KC_REALM}"
     log_info "=========================================="
@@ -332,6 +379,7 @@ main() {
     create_api_route
     create_users_route
     create_admin_route
+    create_echo_route
     print_summary
 
     log_info "APISIX 初始化完成!"
