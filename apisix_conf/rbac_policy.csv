@@ -1,0 +1,12 @@
+p, admin, /api/v1/users, GET
+p, admin, /api/v1/users, POST
+p, admin, /api/v1/users, PUT
+p, admin, /api/v1/users, DELETE
+p, admin, /api/v1/users/admin, GET
+p, admin, /api/v1/users/admin, POST
+p, admin, /api/v1/users/admin, PUT
+p, admin, /api/v1/users/admin, DELETE
+p, user, /api/v1/users, GET
+p, user, /api/v1/users, POST
+g, /admin-group, admin
+g, /user-group, user
