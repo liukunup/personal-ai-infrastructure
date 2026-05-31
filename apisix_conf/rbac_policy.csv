@@ -8,5 +8,5 @@ p, admin, /api/v1/users/admin, PUT
 p, admin, /api/v1/users/admin, DELETE
 p, user, /api/v1/users, GET
 p, user, /api/v1/users, POST
-g, /admin-group, admin
-g, /user-group, user
+g, admin, admin
+g, user, user

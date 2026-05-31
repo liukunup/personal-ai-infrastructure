@@ -111,7 +111,7 @@ create_page_route() {
             },
             "authz-casbin": {
                 "model": "[request_definition]\nr = sub, obj, act\n[policy_definition]\np = sub, obj, act\n[role_definition]\ng = _, _\n[policy_effect]\ne = some(where (p.eft == allow))\n[matchers]\nm = (g(r.sub, p.sub) || keyMatch(r.sub, p.sub)) && keyMatch(r.obj, p.obj) && keyMatch(r.act, p.act)",
-                "policy": "p, *, /, GET\np, admin, *, *\ng, alice, admin",
+                "policy": "p, *, /, GET\np, admin, *, *\ng, admin, admin",
                 "username": "preferred_username"
             },
             "proxy-rewrite": {
@@ -212,7 +212,7 @@ create_users_route() {
             },
             "authz-casbin": {
                 "model": "[request_definition]\nr = sub, obj, act\n[policy_definition]\np = sub, obj, act\n[role_definition]\ng = _, _\n[policy_effect]\ne = some(where (p.eft == allow))\n[matchers]\nm = (g(r.sub, p.sub) || keyMatch(r.sub, p.sub)) && keyMatch(r.obj, p.obj) && keyMatch(r.act, p.act)",
-                "policy": "p, admin, /api/v1/users, GET\np, admin, /api/v1/users, POST\np, admin, /api/v1/users, PUT\np, admin, /api/v1/users, DELETE\np, user, /api/v1/users, GET\np, user, /api/v1/users, POST\ng, /admin-group, admin\ng, /user-group, user",
+                "policy": "p, admin, /api/v1/users, GET\np, admin, /api/v1/users, POST\np, admin, /api/v1/users, PUT\np, admin, /api/v1/users, DELETE\np, user, /api/v1/users, GET\np, user, /api/v1/users, POST\ng, admin, admin\ng, user, user",
                 "username": "preferred_username"
             },
             "proxy-rewrite": {
@@ -269,7 +269,7 @@ create_admin_route() {
             },
             "authz-casbin": {
                 "model": "[request_definition]\nr = sub, obj, act\n[policy_definition]\np = sub, obj, act\n[role_definition]\ng = _, _\n[policy_effect]\ne = some(where (p.eft == allow))\n[matchers]\nm = (g(r.sub, p.sub) || keyMatch(r.sub, p.sub)) && keyMatch(r.obj, p.obj) && keyMatch(r.act, p.act)",
-                "policy": "p, admin, /api/v1/users/admin, GET\np, admin, /api/v1/users/admin, POST\np, admin, /api/v1/users/admin, PUT\np, admin, /api/v1/users/admin, DELETE\ng, /admin-group, admin",
+                "policy": "p, admin, /api/v1/users/admin, GET\np, admin, /api/v1/users/admin, POST\np, admin, /api/v1/users/admin, PUT\np, admin, /api/v1/users/admin, DELETE\ng, admin, admin",
                 "username": "preferred_username"
             },
             "proxy-rewrite": {
