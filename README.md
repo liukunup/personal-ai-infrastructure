@@ -6,6 +6,61 @@ TL;DR;
 docker compose up -d
 ```
 
+## 架构图
+
+```mermaid
+flowchart TB
+    subgraph Internet["🌐 Internet"]
+       Client[("👤 Client")]
+    end
+
+    subgraph SSL_Termination["🔒 SSL Termination"]
+        Nginx["nginx"]
+    end
+
+    subgraph Auth["🔐 Authentication & Authorization"]
+        Keycloak["Keycloak<br/>(OIDC/UMA)"]
+        Postgres[("PostgreSQL")]
+    end
+
+    subgraph Gateway["⚡ API Gateway"]
+        APISIX["APISIX"]
+    end
+
+    subgraph Registry["📡 Service Registry"]
+        Nacos["Nacos"]
+    end
+
+    subgraph Backend["🔧 Backend Services"]
+        Demo["Demo Service<br/>(Python)"]
+    end
+
+    subgraph Monitoring["📊 Monitoring"]
+        Prometheus["Prometheus"]
+        Grafana["Grafana"]
+    end
+
+    subgraph Config["⚙️ Configuration"]
+        Etcd[("etcd")]
+    end
+
+    Client -->|HTTPS| Nginx
+    Nginx -->|Route| APISIX
+    Nginx -->|Proxy| Keycloak
+
+    APISIX -->|Query/Authz| Keycloak
+    Keycloak -->|OIDC Token| APISIX
+    Keycloak -->|RBAC Policy| APISIX
+
+    APISIX -->|Route| Demo
+    Demo -->|Register| Nacos
+    Demo -->|Discover| Nacos
+
+    APISIX -->|Metrics| Prometheus
+    Demo -->|Metrics| Prometheus
+    Prometheus -->|Scrape| Grafana
+```
+
 ## 自动初始化 (kcadm + APISIX Admin API)
 
 启动时自动配置，无需手动操作：
@@ -32,6 +87,7 @@ docker compose up -d
 | `/demo/openapi/*` | hmac-auth + limit-req | `/api/v1/*` |
 | `/demo/users/*` | openid-connect + authz-casbin | `/api/v1/*` |
 | `/demo/admin/*` | openid-connect + authz-casbin (admin only) | `/api/v1/*` |
+| `/demo/keycloak/*` | authz-keycloak (UMA, lazy_load_paths, http_method_as_scope) | `/api/v1/*` |
 
 ## Demo Service Endpoints
 

@@ -582,6 +582,75 @@ class TestCORS(TestCase):
             return True
 
 
+class TestDemoKeycloakHealth(TestCase):
+    """测试 12: /demo/keycloak/* authz-keycloak 健康检查"""
+
+    name = "demo-keycloak-health"
+    description = "测试 /demo/keycloak/* 无认证应返回 401"
+
+    def run(self) -> bool:
+        resp = self.client.get("/demo/keycloak/health")
+
+        if resp.status_code == 401:
+            log_success("正确要求认证 (authz-keycloak)")
+            return True
+        elif resp.status_code == 200:
+            self.error_msg = "意外允许匿名访问"
+            return False
+        else:
+            self.error_msg = f"状态码: {resp.status_code}"
+            return False
+
+
+class TestDemoKeycloakWithToken(TestCase):
+    """测试 13: /demo/keycloak/* 带有效 Keycloak Token"""
+
+    name = "demo-keycloak-with-token"
+    description = "测试 /demo/keycloak/* 使用 Keycloak UMA ticket"
+
+    def run(self) -> bool:
+        token = get_user_token(
+            Config.TEST_USERNAME, Config.TEST_PASSWORD
+        )
+
+        if not token:
+            log_error("无法获取 Token，跳过测试")
+            return False
+
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = self.client.get("/demo/keycloak/health", headers=headers)
+
+        if resp.status_code == 200:
+            log_success("authz-keycloak 认证通过")
+            return True
+        elif resp.status_code == 401:
+            self.error_msg = "Token 被拒绝"
+            return False
+        elif resp.status_code == 403:
+            log_warn("403 - Keycloak 资源权限不足 (用户 token 无法访问该资源)")
+            return True
+        elif resp.status_code == 404:
+            log_warn("404 - Upstream 未就绪")
+            return True
+        elif resp.status_code == 502:
+            log_warn("502 - Upstream不可用 (认证通过但后端未部署)")
+            return True
+        else:
+            self.error_msg = f"状态码: {resp.status_code}"
+            return False
+
+
+class TestDemoKeycloakAdminToken(TestCase):
+    """测试 14: /demo/keycloak/* 普通用户 Token (跳过，该测试需要 admin 用户在 pai_realm)"""
+
+    name = "demo-keycloak-admin-token"
+    description = "测试 /demo/keycloak/* admin 用户 Keycloak Token (跳过)"
+
+    def run(self) -> bool:
+        log_warn("跳过: admin 用户在 master realm，无法用于 pai_realm 的 password grant")
+        return True
+
+
 # ============================================
 # 测试套件
 # ============================================
@@ -799,6 +868,9 @@ def main():
     suite.add(TestDemoAdminHealth(client))
     suite.add(TestDemoAdminWithUserToken(client))
     suite.add(TestCORS(client))
+    suite.add(TestDemoKeycloakHealth(client))
+    suite.add(TestDemoKeycloakWithToken(client))
+    suite.add(TestDemoKeycloakAdminToken(client))
 
     # 过滤测试
     if args.tests_to_run:

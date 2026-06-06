@@ -52,6 +52,7 @@ plugins:
   - hmac-auth
   - openid-connect
   - authz-casbin
+  - authz-keycloak
   - cors
   - limit-req
   - prometheus
