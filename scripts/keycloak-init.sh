@@ -184,7 +184,7 @@ print_summary() {
     log_info "  First Name: ${TEST_FIRSTNAME}, Last Name: ${TEST_LASTNAME}"
     log_info "  所属组: user"
     log_info ""
-    log_info "Keycloak 管理控制台: https://keycloak.example.com/admin/"
+    log_info "Keycloak 管理控制台: https://keycloak.example.com/"
     log_info "=========================================="
 }
 

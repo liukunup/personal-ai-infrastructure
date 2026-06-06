@@ -74,10 +74,9 @@ for DOMAIN in ${DOMAINS}; do
     mkdir -p "${DOMAIN_DIR}"
 
     # 定义文件路径
-    SHORT_NAME=$(echo "${DOMAIN}" | cut -d. -f1)
-    KEY_FILE="${DOMAIN_DIR}/${SHORT_NAME}.key"
-    CSR_FILE="${DOMAIN_DIR}/${SHORT_NAME}.csr"
-    CRT_FILE="${DOMAIN_DIR}/${SHORT_NAME}.crt"
+    KEY_FILE="${DOMAIN_DIR}/server.key"
+    CSR_FILE="${DOMAIN_DIR}/server.csr"
+    CRT_FILE="${DOMAIN_DIR}/server.crt"
 
     # 检查证书和私钥是否已存在
     if [ -f "${CRT_FILE}" ] && [ -f "${KEY_FILE}" ]; then

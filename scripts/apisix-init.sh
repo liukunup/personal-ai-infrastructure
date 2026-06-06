@@ -36,6 +36,30 @@ get_keycloak_discovery() {
 }
 
 # ============================================
+# Helper: 等待 APISIX 就绪
+# ============================================
+wait_for_apisix() {
+    local max_attempts=30
+    local attempt=1
+    local apisix_port=7085
+
+    log_info "等待 APISIX 就绪 (http://apisix:${apisix_port}/status/ready)..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if curl -sf "http://apisix:${apisix_port}/status/ready" > /dev/null 2>&1; then
+            log_info "APISIX 已就绪 (尝试 ${attempt}/${max_attempts})"
+            return 0
+        fi
+        log_warn "等待 APISIX 就绪... (${attempt}/${max_attempts})"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+
+    log_error "APISIX 就绪检查失败，已超时 (${max_attempts} 次尝试)"
+    return 1
+}
+
+# ============================================
 # Helper: 获取 Keycloak Client Secret
 # ============================================
 get_keycloak_client_secret() {
@@ -100,14 +124,63 @@ create_api_route() {
 }
 
 # ============================================
-# 2. 创建 Route: /demo/openapi/*
+# 2. 创建 HMAC Consumer 和 Credential
+# ============================================
+create_hmac_consumer() {
+    log_info "创建 HMAC Consumer 和 Credential"
+
+    # 创建 Consumer
+    local consumer_json='{
+        "username": "hmac-consumer",
+        "desc": "HMAC authentication consumer"
+    }'
+
+    local consumer_response
+    consumer_response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/consumers/hmac-consumer" \
+        -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${consumer_json}")
+
+    if echo "${consumer_response}" | grep -q '"code":0\|"username":"hmac-consumer"'; then
+        log_info "Consumer 'hmac-consumer' 创建成功"
+    else
+        log_warn "Consumer 响应: ${consumer_response}"
+    fi
+
+    # 创建 HMAC Credential
+    local credential_json='{
+        "id": "hmac-credential",
+        "plugins": {
+            "hmac-auth": {
+                "key_id": "'"${HMAC_KEY_ID}"'",
+                "secret_key": "'"${HMAC_SECRET_KEY}"'",
+                "signed_headers": ["X-Request-Id"]
+            }
+        }
+    }'
+
+    local credential_response
+    credential_response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/consumers/hmac-consumer/credentials" \
+        -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${credential_json}")
+
+    if echo "${credential_response}" | grep -q '"code":0\|"id":"hmac-credential"'; then
+        log_info "HMAC Credential 'hmac-credential' 创建成功"
+    else
+        log_warn "Credential 响应: ${credential_response}"
+    fi
+}
+
+# ============================================
+# 3. 创建 Route: /demo/openapi/*
 # ============================================
 create_openapi_route() {
-    log_info "Creating Route: openapi-route"
+    log_info "创建 Route: demo-openapi-route"
 
     local route_json='{
-        "id": "openapi-route",
-        "name": "openapi-route",
+        "id": "demo-openapi-route",
+        "name": "demo-openapi-route",
         "desc": "Route for /demo/openapi/*",
         "uri": "/demo/openapi/*",
         "plugins": {
@@ -115,26 +188,18 @@ create_openapi_route() {
                 "regex_uri": ["^/demo/openapi/(.*)", "/api/v1/$1"]
             },
             "hmac-auth": {
-                "key_id": "'"${HMAC_KEY_ID}"'",
-                "secret_key": "'"${HMAC_SECRET_KEY}"'",
                 "allowed_algorithms": ["hmac-sha256"],
-                "clock_skew": 30,
-                "hide_credentials": false
-            },
-            "cors": {
-                "allow_origins": "*",
-                "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-                "allow_headers": "Authorization,Content-Type,Date",
-                "max_age": 3600
+                "validate_request_body": true,
+                "signed_headers": ["X-Request-Id"]
             },
             "request-id": {
-                "algorithm": "uuid",
                 "header_name": "X-Request-Id",
-                "include_in_response": true
+                "include_in_response": true,
+                "algorithm": "uuid"
             },
             "limit-req": {
-                "rate": 100,
-                "burst": 20,
+                "rate": 1,
+                "burst": 2,
                 "key": "remote_addr",
                 "key_type": "var",
                 "rejected_code": 429,
@@ -153,29 +218,34 @@ create_openapi_route() {
     }'
 
     local response
-    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/openapi-route" \
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/demo-openapi-route" \
         -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
         -H "Content-Type: application/json" \
         -d "${route_json}")
 
-    if echo "${response}" | grep -q '"code":0\|"id":"openapi-route"'; then
-        log_info "Route 'openapi-route' 创建成功"
+    if echo "${response}" | grep -q '"code":0\|"id":"demo-openapi-route"'; then
+        log_info "Route 'demo-openapi-route' 创建成功"
     else
         log_warn "Route 响应: ${response}"
     fi
 }
 
 # ============================================
-# 2. 创建 Route: /api/v1/users/* (openid-connect + authz-casbin)
+# 4. 创建 Route: /demo/users/* (openid-connect + authz-casbin)
 # ============================================
 create_users_route() {
-    log_info "Creating Route: users-route (openid-connect + authz-casbin)"
+    log_info "创建 Route: demo-users-route (openid-connect + authz-casbin)"
 
     local discovery=$(get_keycloak_discovery)
     local route_json='{
-        "id": "users-route",
-        "uri": "/api/v1/users/*",
+        "id": "demo-users-route",
+        "name": "demo-users-route",
+        "desc": "Route for /demo/users/* with OIDC and Casbin auth",
+        "uri": "/demo/users/*",
         "plugins": {
+            "proxy-rewrite": {
+                "regex_uri": ["^/demo/users/(.*)", "/api/v1/$1"]
+            },
             "openid-connect": {
                 "client_id": "'"${KC_CLIENT_ID}"'",
                 "client_secret": "'"${CLIENT_SECRET}"'",
@@ -193,9 +263,6 @@ create_users_route() {
                 "policy": "p, admin, /api/v1/users, GET\np, admin, /api/v1/users, POST\np, admin, /api/v1/users, PUT\np, admin, /api/v1/users, DELETE\np, user, /api/v1/users, GET\np, user, /api/v1/users, POST\ng, admin, admin\ng, user, user",
                 "username": "preferred_username"
             },
-            "proxy-rewrite": {
-                "uri": "/v1$uri"
-            },
             "cors": {
                 "allow_origins": "*",
                 "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
@@ -215,29 +282,34 @@ create_users_route() {
     }'
 
     local response
-    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/users-route" \
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/demo-users-route" \
         -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
         -H "Content-Type: application/json" \
         -d "${route_json}")
 
-    if echo "${response}" | grep -q '"code":0\|"id":"users-route"'; then
-        log_info "Route 'users-route' 创建成功"
+    if echo "${response}" | grep -q '"code":0\|"id":"demo-users-route"'; then
+        log_info "Route 'demo-users-route' 创建成功"
     else
         log_warn "Route 响应: ${response}"
     fi
 }
 
 # ============================================
-# 7. 创建 Route: /api/v1/admin/* (openid-connect + authz-casbin admin-only)
+# 5. 创建 Route: /demo/admin/* (openid-connect + authz-casbin admin-only)
 # ============================================
 create_admin_route() {
-    log_info "Creating Route: admin-route (openid-connect + authz-casbin admin-only)"
+    log_info "创建 Route: demo-admin-route (openid-connect + authz-casbin admin-only)"
 
     local discovery=$(get_keycloak_discovery)
     local route_json='{
-        "id": "admin-route",
-        "uri": "/api/v1/admin/*",
+        "id": "demo-admin-route",
+        "name": "demo-admin-route",
+        "desc": "Route for /demo/admin/* with OIDC and Casbin auth (admin only)",
+        "uri": "/demo/admin/*",
         "plugins": {
+            "proxy-rewrite": {
+                "regex_uri": ["^/demo/admin/(.*)", "/api/v1/$1"]
+            },
             "openid-connect": {
                 "client_id": "'"${KC_CLIENT_ID}"'",
                 "client_secret": "'"${CLIENT_SECRET}"'",
@@ -255,9 +327,6 @@ create_admin_route() {
                 "policy": "p, admin, /api/v1/admin, GET\np, admin, /api/v1/admin, POST\np, admin, /api/v1/admin, PUT\np, admin, /api/v1/admin, DELETE\ng, admin, admin",
                 "username": "preferred_username"
             },
-            "proxy-rewrite": {
-                "uri": "/v1$uri"
-            },
             "cors": {
                 "allow_origins": "*",
                 "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
@@ -277,20 +346,20 @@ create_admin_route() {
     }'
 
     local response
-    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/admin-route" \
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/demo-admin-route" \
         -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
         -H "Content-Type: application/json" \
         -d "${route_json}")
 
-    if echo "${response}" | grep -q '"code":0\|"id":"admin-route"'; then
-        log_info "Route 'admin-route' 创建成功"
+    if echo "${response}" | grep -q '"code":0\|"id":"demo-admin-route"'; then
+        log_info "Route 'demo-admin-route' 创建成功"
     else
         log_warn "Route 响应: ${response}"
     fi
 }
 
 # ============================================
-# 8. 打印摘要
+# 6. 打印摘要
 # ============================================
 print_summary() {
     log_info "=========================================="
@@ -302,14 +371,16 @@ print_summary() {
     log_info "  discovery: http://keycloak:8080/realms/${KC_REALM}/.well-known/openid-configuration"
     log_info ""
     log_info "HMAC credentials:"
+    log_info "  consumer: hmac-consumer"
+    log_info "  credential_id: hmac-credential"
     log_info "  key_id: ${HMAC_KEY_ID}"
     log_info "  secret_key: ${HMAC_SECRET_KEY}"
     log_info ""
     log_info "Routes:"
     log_info "  - demo-api-route (proxy-rewrite, no auth)"
-    log_info "  - openapi-route (hmac-auth + cors + request-id + limit-req)"
-    log_info "  - users-route (openid-connect + authz-casbin)"
-    log_info "  - admin-route (openid-connect + authz-casbin admin-only)"
+    log_info "  - demo-openapi-route (hmac-auth + validate_body + signed_headers + request-id + limit-req)"
+    log_info "  - demo-users-route (openid-connect + authz-casbin)"
+    log_info "  - demo-admin-route (openid-connect + authz-casbin admin-only)"
     log_info "=========================================="
 }
 
@@ -320,6 +391,12 @@ main() {
     log_info "开始 APISIX 配置..."
     log_info "APISIX_URL: ${APISIX_URL}"
 
+    log_info "检查 APISIX 就绪状态..."
+    if ! wait_for_apisix; then
+        log_error "APISIX 未就绪，无法继续初始化"
+        exit 1
+    fi
+
     log_info "获取 Keycloak Client Secret..."
     CLIENT_SECRET=$(get_keycloak_client_secret)
     if [ -z "${CLIENT_SECRET}" ]; then
@@ -329,6 +406,7 @@ main() {
     log_info "Client Secret 获取成功"
 
     create_api_route
+    create_hmac_consumer
     create_openapi_route
     create_users_route
     create_admin_route

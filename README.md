@@ -162,6 +162,47 @@ print(f"Authorization: {auth}")
 EOF
 ```
 
+## Testing with Script
+
+Run the automated test suite:
+
+```bash
+python scripts/test-apisix.py \
+  --base-url https://api.example.com \
+  --kc-url http://keycloak:8080 \
+  --kc-realm pai_realm \
+  --kc-client-id apisix \
+  --kc-username admin \
+  --kc-password changeit
+```
+
+### Available Tests
+
+| Test | Description | Auth Required |
+|------|-------------|---------------|
+| `demo-openapi-health` | HMAC signature authentication | Yes (HMAC) |
+| `demo-openapi-no-auth` | Verify unsigned requests are rejected | No |
+| `demo-openapi-request-id` | Check X-Request-Id header in response | Yes (HMAC) |
+| `demo-openapi-rate-limit` | Test limit-req plugin (rate=1, burst=2) | Yes (HMAC) |
+| `demo-users-health` | OIDC authentication check | No (expects 401) |
+| `demo-users-with-token` | Access with valid OIDC token | Yes (OIDC) |
+| `demo-admin-health` | Admin route authentication check | No (expects 401) |
+| `demo-admin-with-user-token` | Verify regular users cannot access admin routes | Yes (OIDC) |
+| `cors-preflight` | Test CORS preflight requests | No |
+
+### Options
+
+```bash
+# List available tests without running
+python scripts/test-apisix.py --dry-run
+
+# Run specific tests only
+python scripts/test-apisix.py --test demo-users-health --test cors-preflight
+
+# Skip certain tests
+python scripts/test-apisix.py --skip demo-openapi-health --skip demo-openapi-rate-limit
+```
+
 ## Plugins Reference
 
 - [authz-keycloak](https://apisix.apache.org/zh/docs/apisix/plugins/authz-keycloak/) - OIDC/UMA authentication

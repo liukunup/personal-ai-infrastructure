@@ -24,31 +24,31 @@ services:
       - ./nginx_conf/ssl/dhparam.pem:/etc/nginx/dhparam.pem:ro
       # CA 证书
       - ./nginx_conf/ssl/ca.crt:/etc/nginx/ssl/ca.crt:ro
-      # APISIX SSL 证书
-      - ./nginx_conf/ssl/api.example.com/api.crt:/etc/nginx/ssl/api.example.com.crt:ro
-      - ./nginx_conf/ssl/api.example.com/api.key:/etc/nginx/ssl/api.example.com.key:ro
-      # Keycloak SSL 证书
-      - ./nginx_conf/ssl/keycloak.example.com/keycloak.crt:/etc/nginx/ssl/keycloak.example.com.crt:ro
-      - ./nginx_conf/ssl/keycloak.example.com/keycloak.key:/etc/nginx/ssl/keycloak.example.com.key:ro
+      # APISIX 证书
+      - ./nginx_conf/ssl/api.example.com/server.crt:/etc/nginx/ssl/api.example.com.crt:ro
+      - ./nginx_conf/ssl/api.example.com/server.key:/etc/nginx/ssl/api.example.com.key:ro
+      # Keycloak 证书
+      - ./nginx_conf/ssl/keycloak.example.com/server.crt:/etc/nginx/ssl/keycloak.example.com.crt:ro
+      - ./nginx_conf/ssl/keycloak.example.com/server.key:/etc/nginx/ssl/keycloak.example.com.key:ro
     ports:
-      - 80:80   # HTTP
-      - 443:443 # HTTPS
+      - 80:80    # HTTP
+      - 443:443  # HTTPS
     networks:
       pai:
 
   keycloak:
     image: keycloak/keycloak:26.6.2
     container_name: keycloak
-    restart: unless-stopped
+    restart: always
     command:
       - start
-      - --http-enabled=true                 # 启用 HTTP
-      - --proxy-headers=xforwarded          # 解析 X-Forwarded-* 头
-      - --hostname=${KC_HOSTNAME}           # 设置公共域名
-      - --hostname-backchannel-dynamic=true # 启用动态后端主机名解析
-      - --hostname-strict=false             # 允许不匹配主机名的请求
-      - --health-enabled=true               # 启用健康检查端点
-      - --metrics-enabled=true              # 启用服务指标端点
+      - --http-enabled=true                  # 启用 HTTP
+      - --proxy-headers=xforwarded           # 解析 X-Forwarded-* 头
+      - --hostname=${KC_HOSTNAME}            # 设置公共域名
+      - --hostname-backchannel-dynamic=true  # 启用动态后端主机名解析
+      - --hostname-strict=false              # 允许不匹配主机名的请求
+      - --health-enabled=true                # 启用健康检查端点
+      - --metrics-enabled=true               # 启用服务指标端点
     environment:
       # 管理员配置
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
@@ -61,9 +61,9 @@ services:
       KC_DB_URL_PORT: ${PG_PORT:-5432}
       KC_DB_URL_DATABASE: keycloak
     # ports:
-    #   - 8080:8080 # HTTP
-    #   - 8443:8443 # HTTPS
-    #   - 9000:9000 # Health Check and Metrics
+    #   - 8080:8080  # HTTP
+    #   - 8443:8443  # HTTPS
+    #   - 9000:9000  # Health Check & Metrics
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,15 +73,15 @@ services:
       test: |
         CMD-SHELL
         { printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000
-      interval: 60s
+      interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 120s
+      start_period: 60s
 
   postgres:
     image: postgres
     container_name: postgres
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: ${PG_USERNAME:-keycloak}
@@ -96,7 +96,7 @@ services:
       test: |
         CMD-SHELL
         pg_isready -h 127.0.0.1 -p 5432 -d keycloak -q -U ${PG_USERNAME:-keycloak}
-      interval: 60s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
@@ -130,15 +130,13 @@ services:
     restart: always
     volumes:
       - ./apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./apisix_conf/rbac/model.conf:/usr/local/apisix/conf/rbac_model.conf:ro
-      - ./apisix_conf/rbac/policy.csv:/usr/local/apisix/conf/rbac_policy.csv:ro
-      - ./apisix_conf/oidc/config.json:/usr/local/apisix/conf/oidc_config.json:ro
     ports:
-      - 9180:9180/tcp # Admin API
-      # - 9091:9091/tcp # Prometheus Metrics
-      # - 9080:9080/tcp # HTTP Proxy
-      # - 9443:9443/tcp # HTTPS Proxy
-      # - 9092:9092/tcp # gRPC Proxy
+      - 9180:9180/tcp  # Admin API
+      # - 7085:7085/tcp  # Status API
+      # - 9091:9091/tcp  # Prometheus Metrics
+      # - 9080:9080/tcp  # HTTP Proxy
+      # - 9443:9443/tcp  # HTTPS Proxy
+      # - 9092:9092/tcp  # gRPC Proxy
     depends_on:
       etcd:
         condition: service_healthy
@@ -162,13 +160,13 @@ services:
       test: |
         CMD-SHELL
         etcdctl endpoint health
-      interval: 60s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
 
   apisix-init:
-    image: curlimages/curl:latest
+    image: curlimages/curl
     container_name: apisix-init
     restart: "no"
     entrypoint: ["/bin/sh", "/scripts/apisix-init.sh"]
@@ -179,23 +177,21 @@ services:
       APISIX_URL: ${APISIX_URL:-http://apisix:9180}
       APISIX_CONF: /usr/local/apisix/conf/config.yaml
       KC_REALM: ${KC_REALM:-pai_realm}
-      KC_CLIENT_ID: ${KC_CLIENT_ID:-apisix}
+      KC_CLIENT_ID: ${KC_CLIENT_ID:-pai-client}
       KC_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
       KC_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}
       HMAC_KEY_ID: ${HMAC_KEY_ID:-}
       HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-}
     depends_on:
-      apisix:
-        condition: service_started
-      keycloak:
-        condition: service_healthy
+      keycloak-init:
+        condition: service_completed_successfully
     networks:
       pai:
 
   prometheus:
-    image: prom/prometheus:v3.9.1
+    image: prom/prometheus
     container_name: prometheus
-    restart: unless-stopped
+    restart: always
     volumes:
       - ./prometheus_conf/prometheus.yml:/etc/prometheus/prometheus.yml
     # ports:
@@ -206,7 +202,7 @@ services:
   grafana:
     image: grafana/grafana
     container_name: grafana
-    restart: unless-stopped
+    restart: always
     volumes:
       - ./grafana_conf/provisioning:/etc/grafana/provisioning
       - ./grafana_conf/dashboards:/var/lib/grafana/dashboards
@@ -219,7 +215,7 @@ services:
   nacos:
     image: nacos/nacos-server
     container_name: nacos
-    restart: unless-stopped
+    restart: always
     environment:
       PREFER_HOST_MODE: hostname
       MODE: standalone
@@ -227,9 +223,9 @@ services:
       NACOS_AUTH_IDENTITY_VALUE: security
       NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?NACOS_AUTH_TOKEN is not set}
     ports:
-      - 8789:8080 # Console
-      # - 8848:8848 # Client
-      # - 9848:9848 # Server
+      - 8789:8080  # Console
+      # - 8848:8848  # Client
+      # - 9848:9848  # Server
     networks:
       pai:
 
@@ -246,7 +242,7 @@ services:
       SERVICE_HOST: demo
       SERVICE_PORT: 8000
     # ports:
-    #   - 8000:8000 # HTTP API
+    #   - 8000:8000  # HTTP API
     depends_on:
       nacos:
         condition: service_started
@@ -255,8 +251,8 @@ services:
     healthcheck:
       test: |
         CMD-SHELL
-        curl -f http://localhost:8000/health
-      interval: 60s
+        curl -f http://localhost:8000/health || exit 1
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s

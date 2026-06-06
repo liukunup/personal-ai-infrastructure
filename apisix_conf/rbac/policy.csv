@@ -1,4 +1,0 @@
-p, admin, /api/v1/*, .*, allow
-p, user, /api/v1/admin/*, .*, deny
-p, user, /api/v1/profile/*, (GET)|(PUT), allow
-p, user, /api/v1/users, GET, allow

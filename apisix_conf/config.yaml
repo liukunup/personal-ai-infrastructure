@@ -1,7 +1,6 @@
 apisix:
 
-  node_listen:
-    - 9080
+  node_listen: 9080
 
   enable_ipv6: false
 
@@ -10,21 +9,21 @@ apisix:
     ip: "0.0.0.0"
     port: 9092
 
-  dns_resolver:
-    - 127.0.0.11
-    - 8.8.8.8
+  status:
+    ip: "0.0.0.0"
+    port: 7085
 
 discovery:
   nacos:
     host:
-      - http://nacos:8848
-    prefix: /nacos/v1/
-    fetch_interval: 30    # default 30 sec
-    weight: 100           # default 100
+      - "http://nacos:8848"
+    prefix: "/nacos/v1/"
+    fetch_interval: 30  # default 30 sec
+    weight: 100         # default 100
     timeout:
-      connect: 2000       # default 2000 ms
-      send: 2000          # default 2000 ms
-      read: 5000          # default 5000 ms
+      connect: 2000     # default 2000 ms
+      send: 2000        # default 2000 ms
+      read: 5000        # default 5000 ms
 
 deployment:
 
@@ -50,17 +49,17 @@ deployment:
     timeout: 30             # 30 seconds
 
 plugins:
-  - limit-req
-  - prometheus
   - request-id
   - proxy-rewrite
+  - hmac-auth
   - openid-connect
   - authz-casbin
-  - hmac-auth
   - cors
+  - limit-req
+  - prometheus
 
 plugin_attr:
   prometheus:
     export_addr:
-      ip: 0.0.0.0
+      ip: "0.0.0.0"
       port: 9091
