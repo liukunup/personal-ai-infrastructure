@@ -10,12 +10,12 @@ KC_SERVER="${KC_SERVER:-http://keycloak:8080}"
 KC_REALM="${KC_REALM:?KC_REALM is not set}"
 KC_ADMIN_USERNAME="${KC_ADMIN_USERNAME:-admin}"
 KC_ADMIN_PASSWORD="${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}"
-CLIENT_ID="${KC_CLIENT_ID:-pai-client}"
-CLIENT_NAME="${KC_CLIENT_NAME:-PAI Client}"
-TEST_USERNAME="${KC_TEST_USERNAME:-testuser}"
-TEST_PASSWORD="${KC_TEST_PASSWORD:?KC_TEST_PASSWORD is not set}"
-TEST_FIRSTNAME="${KC_TEST_FIRSTNAME:-Test}"
-TEST_LASTNAME="${KC_TEST_LASTNAME:-User}"
+CLIENT_ID="${CLIENT_ID:-pai-client}"
+CLIENT_NAME="${CLIENT_NAME:-PAI Client}"
+TEST_USERNAME="${TEST_USERNAME:-testuser}"
+TEST_PASSWORD="${TEST_PASSWORD:?TEST_PASSWORD is not set}"
+TEST_FIRSTNAME="${TEST_FIRSTNAME:-Test}"
+TEST_LASTNAME="${TEST_LASTNAME:-User}"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -66,9 +66,9 @@ create_realm() {
 # 3. 创建 Groups
 # ============================================
 create_groups() {
-    log_info "创建 Groups: admin, user"
+    log_info "创建 Groups: admin, user, guest"
 
-    local groups=("admin" "user")
+    local groups=("admin" "user" "guest")
 
     for group in "${groups[@]}"; do
         if ${KCADM} get groups -r ${KC_REALM} -q name=${group} 2>/dev/null | grep -q '"name" : "'${group}'"'; then

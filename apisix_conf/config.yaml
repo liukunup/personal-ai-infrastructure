@@ -1,13 +1,12 @@
 apisix:
-
   node_listen: 9080
 
-  enable_ipv6: false
+  # enable_ipv6: false
 
-  enable_control: true
-  control:
-    ip: "0.0.0.0"
-    port: 9092
+  # enable_control: true
+  # control:
+  #   ip: "0.0.0.0"
+  #   port: 9092
 
   status:
     ip: "0.0.0.0"
@@ -26,6 +25,11 @@ discovery:
       read: 5000        # default 5000 ms
 
 deployment:
+  etcd:
+    host:                   # it's possible to define multiple etcd hosts addresses of the same etcd cluster.
+      - "http://etcd:2379"  # multiple etcd address
+    prefix: "/apisix"       # apisix configurations prefix
+    timeout: 30             # 30 seconds
 
   admin:
     enable_admin_ui: true
@@ -38,15 +42,9 @@ deployment:
         key: edd1c9f034335f136f87ad84b625c8f1
         role: admin                            # admin: manage all configuration data
 
-      - name: viewer
-        key: 4054f7cf07e344346cd3f287985e76a2
-        role: viewer
-
-  etcd:
-    host:                   # it's possible to define multiple etcd hosts addresses of the same etcd cluster.
-      - "http://etcd:2379"  # multiple etcd address
-    prefix: "/apisix"       # apisix configurations prefix
-    timeout: 30             # 30 seconds
+      # - name: viewer
+      #   key: 4054f7cf07e344346cd3f287985e76a2
+      #   role: viewer
 
 plugins:
   - request-id

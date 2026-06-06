@@ -7,6 +7,7 @@ networks:
 volumes:
   postgres:
   etcd:
+  prometheus:
 
 services:
 
@@ -112,12 +113,12 @@ services:
       KC_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
       KC_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}
       KC_REALM: ${KC_REALM:?KC_REALM is not set}
-      KC_CLIENT_ID: ${KC_CLIENT_ID:-pai-client}
-      KC_CLIENT_NAME: ${KC_CLIENT_NAME:-PAI Client}
-      KC_TEST_USERNAME: ${KC_TEST_USERNAME:-testuser}
-      KC_TEST_PASSWORD: ${KC_TEST_PASSWORD:?KC_TEST_PASSWORD is not set}
-      KC_TEST_FIRSTNAME: ${KC_TEST_FIRSTNAME:-Test}
-      KC_TEST_LASTNAME: ${KC_TEST_LASTNAME:-User}
+      CLIENT_ID: ${CLIENT_ID:-pai-client}
+      CLIENT_NAME: ${CLIENT_NAME:-PAI Client}
+      TEST_USERNAME: ${TEST_USERNAME:-testuser}
+      TEST_PASSWORD: ${TEST_PASSWORD:?TEST_PASSWORD is not set}
+      TEST_FIRSTNAME: ${TEST_FIRSTNAME:-Test}
+      TEST_LASTNAME: ${TEST_LASTNAME:-User}
     depends_on:
       keycloak:
         condition: service_healthy
@@ -174,12 +175,10 @@ services:
       - ./scripts/apisix-init.sh:/scripts/apisix-init.sh:ro
       - ./apisix_conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     environment:
-      APISIX_URL: ${APISIX_URL:-http://apisix:9180}
-      APISIX_CONF: /usr/local/apisix/conf/config.yaml
-      KC_REALM: ${KC_REALM:-pai_realm}
-      KC_CLIENT_ID: ${KC_CLIENT_ID:-pai-client}
       KC_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:-admin}
       KC_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}
+      KC_REALM: ${KC_REALM:-pai_realm}
+      CLIENT_ID: ${CLIENT_ID:-pai-client}
       HMAC_KEY_ID: ${HMAC_KEY_ID:-}
       HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-}
     depends_on:
@@ -193,6 +192,7 @@ services:
     container_name: prometheus
     restart: always
     volumes:
+      - prometheus:/prometheus
       - ./prometheus_conf/prometheus.yml:/etc/prometheus/prometheus.yml
     # ports:
     #   - 9090:9090

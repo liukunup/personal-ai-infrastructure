@@ -7,14 +7,18 @@ set -e
 
 # 环境变量
 APISIX_URL="${APISIX_URL:-http://apisix:9180}"
+APISIX_STATUS_URL="${APISIX_STATUS_URL:-http://apisix:7085/status/ready}"
+
 APISIX_CONF="${APISIX_CONF:-/usr/local/apisix/conf/config.yaml}"
 APISIX_ADMIN_KEY="${APISIX_ADMIN_KEY:-$(grep -A1 'name: admin' "${APISIX_CONF}" 2>/dev/null | grep 'key:' | awk '{print $2}' | head -1)}"
-KC_REALM="${KC_REALM:-pai_realm}"
-KC_CLIENT_ID="${KC_CLIENT_ID:-apisix}"
+
+KC_SERVER="${KC_SERVER:-http://keycloak:8080}"
+KC_REALM="${KC_REALM:?KC_REALM is not set}"
 KC_ADMIN_USERNAME="${KC_ADMIN_USERNAME:-admin}"
 KC_ADMIN_PASSWORD="${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD is not set}"
 
-# HMAC credentials (generate if not provided)
+CLIENT_ID="${CLIENT_ID:-pai-client}"
+
 HMAC_KEY_ID="${HMAC_KEY_ID:-$(openssl rand -hex 8 2>/dev/null || head -c 16 /dev/urandom | xxd -p)}"
 HMAC_SECRET_KEY="${HMAC_SECRET_KEY:-$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)}"
 
@@ -32,26 +36,25 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Helper: 获取 Keycloak OIDC Discovery URL
 # ============================================
 get_keycloak_discovery() {
-    echo "http://keycloak:8080/realms/${KC_REALM}/.well-known/openid-configuration"
+    echo "${KC_SERVER}/realms/${KC_REALM}/.well-known/openid-configuration"
 }
 
 # ============================================
 # Helper: 等待 APISIX 就绪
 # ============================================
-wait_for_apisix() {
+wait_for_apisix_ready() {
     local max_attempts=30
     local attempt=1
-    local apisix_port=7085
 
-    log_info "等待 APISIX 就绪 (http://apisix:${apisix_port}/status/ready)..."
+    log_info "等待 APISIX 就绪 (${APISIX_STATUS_URL})..."
 
     while [ $attempt -le $max_attempts ]; do
-        if curl -sf "http://apisix:${apisix_port}/status/ready" > /dev/null 2>&1; then
+        if curl -sf "${APISIX_STATUS_URL}" > /dev/null 2>&1; then
             log_info "APISIX 已就绪 (尝试 ${attempt}/${max_attempts})"
             return 0
         fi
         log_warn "等待 APISIX 就绪... (${attempt}/${max_attempts})"
-        sleep 2
+        sleep 3
         attempt=$((attempt + 1))
     done
 
@@ -63,22 +66,23 @@ wait_for_apisix() {
 # Helper: 获取 Keycloak Client Secret
 # ============================================
 get_keycloak_client_secret() {
-    local kc_admin_user="${KC_ADMIN_USERNAME:-admin}"
-    local kc_admin_pass="${KC_ADMIN_PASSWORD}"
-    local kc_client_id="${KC_CLIENT_ID:-apisix}"
+    local kc_server="${KC_SERVER:-http://keycloak:8080}"
+    local kc_admin_username="${KC_ADMIN_USERNAME:-admin}"
+    local kc_admin_password="${KC_ADMIN_PASSWORD}"
+    local client_id="${CLIENT_ID:-pai-client}"
 
     local token
-    token=$(curl -s -X POST "http://keycloak:8080/realms/master/protocol/openid-connect/token" \
+    token=$(curl -s -X POST "${kc_server}/realms/master/protocol/openid-connect/token" \
         -H "Content-Type: application/x-www-form-urlencoded" \
-        -d "username=${kc_admin_user}&password=${kc_admin_pass}&grant_type=password&client_id=admin-cli" \
+        -d "username=${kc_admin_username}&password=${kc_admin_password}&grant_type=password&client_id=admin-cli" \
         | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
     local client_uuid
-    client_uuid=$(curl -s -X GET "http://keycloak:8080/admin/realms/${KC_REALM}/clients?clientId=${kc_client_id}" \
+    client_uuid=$(curl -s -X GET "${kc_server}/admin/realms/${KC_REALM}/clients?clientId=${client_id}" \
         -H "Authorization: Bearer ${token}" \
         | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
 
-    curl -s -X GET "http://keycloak:8080/admin/realms/${KC_REALM}/clients/${client_uuid}/client-secret" \
+    curl -s -X GET "${kc_server}/admin/realms/${KC_REALM}/clients/${client_uuid}/client-secret" \
         -H "Authorization: Bearer ${token}" \
         | grep -o '"value":"[^"]*"' | cut -d'"' -f4
 }
@@ -392,7 +396,7 @@ main() {
     log_info "APISIX_URL: ${APISIX_URL}"
 
     log_info "检查 APISIX 就绪状态..."
-    if ! wait_for_apisix; then
+    if ! wait_for_apisix_ready; then
         log_error "APISIX 未就绪，无法继续初始化"
         exit 1
     fi
