@@ -32,6 +32,7 @@ docker compose up -d
 | `/demo/openapi/*` | hmac-auth + limit-req | `/api/v1/*` |
 | `/demo/users/*` | openid-connect + authz-casbin | `/api/v1/*` |
 | `/demo/admin/*` | openid-connect + authz-casbin (admin only) | `/api/v1/*` |
+| `/demo/keycloak/*` | authz-keycloak (UMA, lazy_load_paths, http_method_as_scope) | `/api/v1/*` |
 
 ## Demo Service Endpoints
 

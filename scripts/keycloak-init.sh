@@ -96,19 +96,53 @@ create_client() {
             -s enabled=true \
             -s publicClient=false \
             -s bearerOnly=false \
-            -s protocol=openid-connect
-        log_info "Client '${CLIENT_ID}' 创建成功"
+            -s protocol=openid-connect \
+            -s serviceAccountsEnabled=true \
+            -s authorizationServicesEnabled=true
+        log_info "Client '${CLIENT_ID}' 创建成功 (Service Accounts + UMA enabled)"
     else
-        log_warn "Client '${CLIENT_ID}' 已存在，更新名称..."
+        log_warn "Client '${CLIENT_ID}' 已存在，更新配置..."
         local client_uuid
         client_uuid=$(${KCADM} get clients -r ${KC_REALM} -q clientId=${CLIENT_ID} --fields id --format csv --noquotes | tr -d '[:space:]')
         ${KCADM} update clients/${client_uuid} -r ${KC_REALM} -s name="${CLIENT_NAME}"
-        log_info "Client 名称已更新为 ${CLIENT_NAME}"
+        log_info "Client 配置已更新 (Service Accounts + UMA enabled)"
     fi
 }
 
 # ============================================
-# 5. 获取 Client Secret
+# 5. 配置 Service Account (uma_protection role)
+# ============================================
+configure_service_account() {
+    log_info "配置 Service Account uma_protection role..."
+
+    local client_uuid
+    client_uuid=$(${KCADM} get clients -r ${KC_REALM} -q clientId=${CLIENT_ID} --fields id --format csv --noquotes | tr -d '[:space:]')
+
+    local service_account_user
+    service_account_user=$(${KCADM} get clients/${client_uuid}/service-account-user -r ${KC_REALM} --fields id --format csv --noquotes | tr -d '[:space:]')
+
+    if [ -z "${service_account_user}" ]; then
+        log_warn "Service account user not found, skipping uma_protection role assignment"
+        return 0
+    fi
+
+    local uma_role
+    uma_role=$(${KCADM} get roles -r ${KC_REALM} -q name=uma_protection --fields id,name --format csv --noquotes | tr -d '[:space:]')
+    if [ -z "${uma_role}" ]; then
+        log_warn "uma_protection role not found, creating it..."
+        ${KCADM} create roles -r ${KC_REALM} -s name=uma_protection -s description="UMA Protection API role"
+        uma_role=$(${KCADM} get roles -r ${KC_REALM} -q name=uma_protection --fields id,name --format csv --noquotes | tr -d '[:space:]')
+    fi
+
+    ${KCADM} add-roles -r ${KC_REALM} --rolename uma_protection --uusername service-account-${client_uuid} 2>/dev/null || \
+    ${KCADM} add-roles -r ${KC_REALM} -r ${KC_REALM} --rolesrealmname uma_protection --uid ${service_account_user} 2>/dev/null || \
+    log_warn "uma_protection role may already be assigned or assignment method differs"
+
+    log_info "Service Account 配置完成"
+}
+
+# ============================================
+# 6. 获取 Client Secret
 # ============================================
 get_client_secret() {
     log_info "获取 Client Secret..."
@@ -121,7 +155,7 @@ get_client_secret() {
 }
 
 # ============================================
-# 6. 创建测试用户
+# 7. 创建测试用户
 # ============================================
 create_user() {
     log_info "创建测试用户: ${TEST_USERNAME}"
@@ -151,7 +185,7 @@ create_user() {
 }
 
 # ============================================
-# 7. 将用户加入 user 组
+# 8. 将用户加入 user 组
 # ============================================
 assign_user_to_group() {
     log_info "将用户 ${TEST_USERNAME} 加入 user 组..."
@@ -169,7 +203,7 @@ assign_user_to_group() {
 }
 
 # ============================================
-# 8. 打印配置摘要
+# 9. 打印配置摘要
 # ============================================
 print_summary() {
     log_info "=========================================="
@@ -197,6 +231,7 @@ main() {
     create_groups
     create_client
     get_client_secret
+    configure_service_account
     create_user
     assign_user_to_group
     print_summary

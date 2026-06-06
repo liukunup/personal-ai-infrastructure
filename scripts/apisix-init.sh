@@ -363,7 +363,66 @@ create_admin_route() {
 }
 
 # ============================================
-# 6. 打印摘要
+# 6. 创建 Route: /demo/keycloak/* (authz-keycloak)
+# ============================================
+create_keycloak_route() {
+    log_info "创建 Route: demo-keycloak-route (authz-keycloak)"
+
+    local token_endpoint="${KC_SERVER}/realms/${KC_REALM}/protocol/openid-connect/token"
+    local route_json='{
+        "id": "demo-keycloak-route",
+        "name": "demo-keycloak-route",
+        "desc": "Route for /demo/keycloak/* with authz-keycloak",
+        "uri": "/demo/keycloak/*",
+        "plugins": {
+            "proxy-rewrite": {
+                "regex_uri": ["^/demo/keycloak/(.*)", "/api/v1/$1"]
+            },
+            "authz-keycloak": {
+                "discovery": "'"${KC_SERVER}"'/realms/'"${KC_REALM}"'/.well-known/uma2-configuration",
+                "token_endpoint": "'"${token_endpoint}"'",
+                "client_id": "'"${CLIENT_ID}"'",
+                "client_secret": "'"${CLIENT_SECRET}"'",
+                "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
+                "policy_enforcement_mode": "ENFORCING",
+                "lazy_load_paths": true,
+                "http_method_as_scope": true,
+                "ssl_verify": false,
+                "cache_ttl_seconds": 86400
+            },
+            "cors": {
+                "allow_origins": "*",
+                "allow_methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+                "allow_headers": "Authorization,Content-Type",
+                "max_age": 3600
+            }
+        },
+        "upstream": {
+            "service_name": "demo-service",
+            "type": "roundrobin",
+            "discovery_type": "nacos",
+            "discovery_args": {
+                "namespace_id": "public",
+                "group_name": "DEFAULT_GROUP"
+            }
+        }
+    }'
+
+    local response
+    response=$(curl -s -X PUT "${APISIX_URL}/apisix/admin/routes/demo-keycloak-route" \
+        -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${route_json}")
+
+    if echo "${response}" | grep -q '"code":0\|"id":"demo-keycloak-route"'; then
+        log_info "Route 'demo-keycloak-route' 创建成功"
+    else
+        log_warn "Route 响应: ${response}"
+    fi
+}
+
+# ============================================
+# 7. 打印摘要
 # ============================================
 print_summary() {
     log_info "=========================================="
@@ -385,6 +444,7 @@ print_summary() {
     log_info "  - demo-openapi-route (hmac-auth + validate_body + signed_headers + request-id + limit-req)"
     log_info "  - demo-users-route (openid-connect + authz-casbin)"
     log_info "  - demo-admin-route (openid-connect + authz-casbin admin-only)"
+    log_info "  - demo-keycloak-route (authz-keycloak + lazy_load_paths + http_method_as_scope)"
     log_info "=========================================="
 }
 
@@ -414,6 +474,7 @@ main() {
     create_openapi_route
     create_users_route
     create_admin_route
+    create_keycloak_route
     print_summary
 
     log_info "APISIX 初始化完成!"
