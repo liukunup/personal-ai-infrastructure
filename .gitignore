@@ -1,0 +1,19 @@
+# SSL Certificates
+**/*.crt
+**/*.key
+**/*.srl
+**/*.pem
+
+# Environment files
+**/.env
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/venv/
+**/.venv/
+
+# macOS
+**/.DS_Store
